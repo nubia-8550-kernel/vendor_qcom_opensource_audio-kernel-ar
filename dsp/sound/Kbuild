@@ -90,9 +90,10 @@ endif
 
 # Module information used by KBuild framework
 
-#$(CONFIG_SND_SMARTPA_AW882XX)
-obj-m += smartpa_stat_dlkm.o
-smartpa_stat_dlkm-y := $(SMARTPA_OBJS)
+ifeq ($(CONFIG_SND_SMARTPA_AW882XX), y)
+    obj-m += smartpa_stat_dlkm.o
+    smartpa_stat_dlkm-y := $(SMARTPA_OBJS)
+endif
 
 # inject some build related information
 DEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

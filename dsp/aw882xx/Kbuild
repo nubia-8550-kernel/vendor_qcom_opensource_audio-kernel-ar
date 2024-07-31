@@ -60,13 +60,13 @@ COMMON_INC :=	-I$(AUDIO_ROOT)/$(COMMON_DIR)
 
 ############ AW882XX ############
 #ifdef CONFIG_SND_SMARTPA_AW882XX
-AW882XX_OBJS += aw882xx.o 
+AW882XX_OBJS += aw882xx.o
 AW882XX_OBJS += aw882xx_bin_parse.o
 AW882XX_OBJS += aw882xx_calib.o
 AW882XX_OBJS += aw882xx_device.o
 AW882XX_OBJS += aw882xx_dsp.o
 AW882XX_OBJS += aw882xx_init.o
-AW882XX_OBJS += aw882xx_monitor.o 
+AW882XX_OBJS += aw882xx_monitor.o
 AW882XX_OBJS += aw882xx_spin.o
 #endif
 
@@ -106,6 +106,7 @@ endif
 
 # Module information used by KBuild framework
 
-#$(CONFIG_SND_SMARTPA_AW882XX)
-obj-m += aw882xx_dlkm.o
-aw882xx_dlkm-y := $(AW882XX_OBJS)
+ifeq ($(CONFIG_SND_SMARTPA_AW882XX), y)
+    obj-m += aw882xx_dlkm.o
+    aw882xx_dlkm-y := $(AW882XX_OBJS)
+endif
