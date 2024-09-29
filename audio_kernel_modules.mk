@@ -57,3 +57,13 @@ endif
 endif
 endif
 endif
+### zte add by QC 20220810
+LOCAL_CFLAGS += $(FEATURE_GLOBAL_CPPFLAGS)
+ifeq ($(ZTE_FEATURE_AUDIO_AWINIC), true)
+AUDIO_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/aw882xx_dlkm.ko
+AUDIO_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/smartpa_stat_dlkm.ko
+endif
+## zte add by HTB for TFA98XX
+ifeq ($(ZTE_FEATURE_GOODIXSMARTPA_ENABLE), true)
+AUDIO_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/tfa98xx_dlkm.ko
+endif

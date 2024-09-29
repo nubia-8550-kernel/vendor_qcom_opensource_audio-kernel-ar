@@ -30,6 +30,8 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/swr_dmic_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa884x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wsa883x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_dlkm.ko \
+	$(KERNEL_MODULES_OUT)/wcd938x_slave_dlkm.ko \
+	$(KERNEL_MODULES_OUT)/hdmi_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_slave_dlkm.ko
 endif
 ifeq ($(call is-board-platform-in-list,bengal), true)
@@ -41,3 +43,15 @@ PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/bolero_cdc_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_dlkm.ko \
 	$(KERNEL_MODULES_OUT)/wcd938x_slave_dlkm.ko
 endif
+### zte add by QC 20220810
+LOCAL_CFLAGS += $(FEATURE_GLOBAL_CPPFLAGS)
+ifeq ($(ZTE_FEATURE_AUDIO_AWINIC), true)
+PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/aw882xx_dlkm.ko
+PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/smartpa_stat_dlkm.ko
+endif
+### zte add by tfa98xx 20230207
+ifeq ($(ZTE_FEATURE_GOODIXSMARTPA_ENABLE), true)
+LOCAL_CFLAGS += $(FEATURE_GLOBAL_CPPFLAGS)
+PRODUCT_PACKAGES += $(KERNEL_MODULES_OUT)/tfa98xx_dlkm.ko
+endif
+
