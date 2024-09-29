@@ -41,6 +41,12 @@ struct mutex hphr_pa_lock;
 void wcd_mbhc_jack_report(struct wcd_mbhc *mbhc,
 			  struct snd_soc_jack *jack, int status, int mask)
 {
+        /* zte add */
+	if (jack == &mbhc->headset_jack) {
+		pr_info("%s: headset_jack status(%#X)\n", __func__, status);
+	} else if(jack == &mbhc->button_jack) {
+		pr_info("%s: button_jack status(%#X)\n", __func__, status);
+	}
 	snd_soc_jack_report(jack, status, mask);
 }
 EXPORT_SYMBOL(wcd_mbhc_jack_report);
@@ -750,8 +756,8 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 							mbhc->hph_status,
 							WCD_MBHC_JACK_MASK);
 				}
-				pr_debug("%s: Marking jack type as SND_JACK_LINEOUT\n",
-				__func__);
+				pr_info("%s: Marking jack type as SND_JACK_LINEOUT\n",
+				__func__);/* zte add */
 			}
 		}
 
@@ -1135,7 +1141,7 @@ static irqreturn_t wcd_mbhc_mech_plug_detect_irq(int irq, void *data)
 	int r = IRQ_HANDLED;
 	struct wcd_mbhc *mbhc = data;
 
-	pr_debug("%s: enter\n", __func__);
+	pr_info("%s: enter\n", __func__);
 	if (mbhc == NULL) {
 		pr_err("%s: NULL irq data\n", __func__);
 		return IRQ_NONE;
