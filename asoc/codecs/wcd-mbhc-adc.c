@@ -430,7 +430,7 @@ static int wcd_mbhc_adc_get_hph_thres(struct wcd_mbhc *mbhc)
 }
 
 static bool wcd_mbhc_adc_check_for_spl_headset(struct wcd_mbhc *mbhc,
-					   int *spl_hs_cnt)
+					   int *spl_hs_cnt, int prt_mv_spl)
 {
 	bool spl_hs = false;
 	int output_mv = 0;
@@ -453,6 +453,12 @@ static bool wcd_mbhc_adc_check_for_spl_headset(struct wcd_mbhc *mbhc,
 	adc_threshold = wcd_mbhc_adc_get_spl_hs_thres(mbhc);
 	adc_hph_threshold = wcd_mbhc_adc_get_hph_thres(mbhc);
 
+
+	/* ZTE_chenjun */
+	if (prt_mv_spl > 0) {
+		pr_info("%s: mv(%d), hs_thr(%d), hph_thr(%d)\n", __func__, output_mv,
+				adc_threshold, adc_hph_threshold);
+	}
 	if (output_mv > adc_threshold || output_mv < adc_hph_threshold) {
 		spl_hs = false;
 	} else {
@@ -667,6 +673,9 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	int cross_conn;
 	int try = 0;
 	int hs_threshold, micbias_mv;
+	int prt_mv2 = 1;
+	int prt_mv_spl = 1;
+
 
 	pr_debug("%s: enter\n", __func__);
 
@@ -697,6 +706,9 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	output_mv = wcd_measure_adc_continuous(mbhc);
 	plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
 
+	/* ZTE_chenjun */
+	pr_info("%s: mv1(%d)\n", __func__, output_mv);
+
 	/*
 	 * Report plug type if it is either headset or headphone
 	 * else start the 3 sec loop
@@ -724,8 +736,10 @@ correct_plug_type:
 	/*
 	 * Callback to disable BCS slow insertion detection
 	 */
-	if (mbhc->mbhc_cb->bcs_enable)
-		mbhc->mbhc_cb->bcs_enable(mbhc, false);
+	if (plug_type == MBHC_PLUG_TYPE_HEADSET ||
+	    plug_type == MBHC_PLUG_TYPE_HEADPHONE)
+		if (mbhc->mbhc_cb->bcs_enable)
+			mbhc->mbhc_cb->bcs_enable(mbhc, false);
 
 	timeout = jiffies + msecs_to_jiffies(HS_DETECT_PLUG_TIME_MS);
 	while (!time_after(jiffies, timeout)) {
@@ -752,6 +766,12 @@ correct_plug_type:
 		 */
 		output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
 
+		/* ZTE_chenjun */
+		if (prt_mv2 > 0) {
+			pr_info("%s: mv2(%d), prt(%d)\n", __func__, output_mv, prt_mv2);
+			prt_mv2 = 0;
+		}
+
 		/*
 		 * instead of hogging system by contineous polling, wait for
 		 * sometime and re-check stop request again.
@@ -761,7 +781,7 @@ correct_plug_type:
 		if ((output_mv > hs_threshold) &&
 		    (spl_hs_count < WCD_MBHC_SPL_HS_CNT)) {
 			spl_hs = wcd_mbhc_adc_check_for_spl_headset(mbhc,
-								&spl_hs_count);
+								&spl_hs_count, prt_mv_spl);
 			output_mv = wcd_measure_adc_once(mbhc, MUX_CTL_IN2P);
 
 			if (spl_hs_count == WCD_MBHC_SPL_HS_CNT) {
@@ -769,6 +789,7 @@ correct_plug_type:
 				     wcd_mbhc_get_micbias(mbhc)) / micbias_mv;
 				spl_hs = true;
 				mbhc->micbias_enable = true;
+				prt_mv2 = 2;
 			}
 		}
 
@@ -816,6 +837,7 @@ correct_plug_type:
 			}
 			if ((pt_gnd_mic_swap_cnt == mbhc->swap_thr) &&
 				(plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP)) {
+				prt_mv2 = 3;
 				/*
 				 * if switch is toggled, check again,
 				 * otherwise report unsupported plug
@@ -834,6 +856,7 @@ correct_plug_type:
 			pr_debug("%s: cable is extension cable\n", __func__);
 			plug_type = MBHC_PLUG_TYPE_HIGH_HPH;
 			wrk_complete = true;
+			prt_mv_spl = 0;
 		} else {
 			pr_debug("%s: cable might be headset: %d\n", __func__,
 				 plug_type);
@@ -904,6 +927,18 @@ report:
 		goto exit;
 	}
 
+	/* ZTE_chenjun */
+	if ((plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP)
+		&& (mbhc->mbhc_cfg->enable_usbc_analog)) {
+		plug_type = wcd_mbhc_get_plug_from_adc(mbhc, output_mv);
+		pr_info("%s: Get swap plug %d\n",
+				__func__, plug_type);
+	}
+	if ((plug_type == MBHC_PLUG_TYPE_HEADSET ||
+	    plug_type == MBHC_PLUG_TYPE_HEADPHONE))
+		if (mbhc->mbhc_cb->bcs_enable)
+			mbhc->mbhc_cb->bcs_enable(mbhc, true);
+
 	pr_debug("%s: Valid plug found, plug type %d wrk_cmpt %d btn_intr %d\n",
 			__func__, plug_type, wrk_complete,
 			mbhc->btn_press_intr);
@@ -926,8 +961,10 @@ enable_supply:
 	else
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_DETECTION_DONE, 0);
 
-	if (mbhc->mbhc_cb->bcs_enable)
-		mbhc->mbhc_cb->bcs_enable(mbhc, true);
+	if ((plug_type == MBHC_PLUG_TYPE_HEADSET ||
+	    plug_type == MBHC_PLUG_TYPE_HEADPHONE))
+		if (mbhc->mbhc_cb->bcs_enable)
+			mbhc->mbhc_cb->bcs_enable(mbhc, true);
 
 	if (mbhc->mbhc_cb->mbhc_micbias_control)
 		wcd_mbhc_adc_update_fsm_source(mbhc, plug_type);
@@ -984,6 +1021,12 @@ exit:
 		mbhc->mbhc_cb->hph_pull_down_ctrl(component, true);
 
 	mbhc->mbhc_cb->lock_sleep(mbhc, false);
+
+	/* ZTE_chenjun */
+	pr_info("%s: mv %d plug %d cmpt %d btn_intr %d\n",
+			__func__, output_mv, plug_type, wrk_complete,
+			mbhc->btn_press_intr);
+
 	pr_debug("%s: leave\n", __func__);
 }
 
@@ -995,7 +1038,7 @@ static irqreturn_t wcd_mbhc_adc_hs_rem_irq(int irq, void *data)
 	bool hphpa_on = false;
 	u8  moisture_status = 0;
 
-	pr_debug("%s: enter\n", __func__);
+	pr_info("%s: enter\n", __func__);
 	WCD_MBHC_RSC_LOCK(mbhc);
 
 	timeout = jiffies +
@@ -1101,6 +1144,9 @@ static irqreturn_t wcd_mbhc_adc_hs_rem_irq(int irq, void *data)
 	}
 exit:
 	WCD_MBHC_RSC_UNLOCK(mbhc);
+	/* ZTE_chenjun */
+	pr_info("%s: mv(%d), thr(%d), mo(%d)\n",
+			__func__, output_mv, adc_threshold, moisture_status);
 	pr_debug("%s: leave\n", __func__);
 	return IRQ_HANDLED;
 }
@@ -1111,7 +1157,7 @@ static irqreturn_t wcd_mbhc_adc_hs_ins_irq(int irq, void *data)
 	u8 clamp_state = 0;
 	u8 clamp_retry = WCD_MBHC_FAKE_INS_RETRY;
 
-	pr_debug("%s: enter\n", __func__);
+	pr_info("%s: enter\n", __func__);
 
 	/*
 	 * ADC COMPLETE and ELEC_REM interrupts are both enabled for HEADPHONE,

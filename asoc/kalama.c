@@ -51,6 +51,10 @@
 #include "msm_common.h"
 #include "msm_dailink.h"
 
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+#include <vendor/comdef/zlog_common_base.h>
+#endif
+
 #define DRV_NAME "kalama-asoc-snd"
 #define __CHIPSET__ "KALAMA "
 #define MSM_DAILINK_NAME(name) (__CHIPSET__#name)
@@ -60,6 +64,10 @@
 #define CODEC_EXT_CLK_RATE	9600000
 #define DEV_NAME_STR_LEN	32
 #define WCD_MBHC_HS_V_MAX	1600
+
+/* ZTE MBHC*/
+#define ZTE_MBHC_CAL
+#define WCD_MBHC_HS_V_MAX_ZTE       1700
 
 #define WCN_CDC_SLIM_RX_CH_MAX 2
 #define WCN_CDC_SLIM_TX_CH_MAX 2
@@ -96,6 +104,9 @@ struct msm_asoc_mach_data {
 	int backend_used;
 	struct prm_earpa_hw_intf_config upd_config;
 	int wcd_used;
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+	struct zlog_client *zlog_snd_card_client;
+#endif
 };
 
 static bool is_initial_boot;
@@ -124,6 +135,16 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.mono_stero_detection = false,
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
+#ifdef ZTE_MBHC_CAL
+	.key_code[0] = KEY_MEDIA,
+	.key_code[1] = KEY_VOLUMEUP,
+	.key_code[2] = KEY_VOLUMEDOWN,
+	.key_code[3] = 0,
+	.key_code[4] = 0,
+	.key_code[5] = 0,
+	.key_code[6] = 0,
+	.key_code[7] = 0,
+#else
 	.key_code[0] = KEY_MEDIA,
 	.key_code[1] = KEY_VOICECOMMAND,
 	.key_code[2] = KEY_VOLUMEUP,
@@ -132,6 +153,7 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.key_code[5] = 0,
 	.key_code[6] = 0,
 	.key_code[7] = 0,
+#endif
 	.linein_th = 5000,
 	.moisture_en = false,
 	.mbhc_micbias = MIC_BIAS_2,
@@ -139,6 +161,18 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.enable_anc_mic_detect = false,
 	.moisture_duty_cycle_en = true,
 };
+
+/* snd card struct */
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+static struct zlog_mod_info zlog_snd_card_dev = {
+	.module_no = ZLOG_MODULE_SND_CARD,
+	.name="kalama",
+	.device_name = "kalama_snd_card",
+	.ic_name = "snd_card",
+	.module_name = "KALAMA",
+	.fops = NULL,
+};
+#endif
 
 static bool msm_usbc_swap_gnd_mic(struct snd_soc_component *component, bool active)
 {
@@ -471,13 +505,26 @@ static void *def_wcd_mbhc_cal(void)
 				WCD9XXX_MBHC_DEF_RLOADS), GFP_KERNEL);
 	if (!wcd_mbhc_cal)
 		return NULL;
-
+#ifdef ZTE_MBHC_CAL
+	WCD_MBHC_CAL_PLUG_TYPE_PTR(wcd_mbhc_cal)->v_hs_max = WCD_MBHC_HS_V_MAX_ZTE;
+#else
 	WCD_MBHC_CAL_PLUG_TYPE_PTR(wcd_mbhc_cal)->v_hs_max = WCD_MBHC_HS_V_MAX;
+#endif
 	WCD_MBHC_CAL_BTN_DET_PTR(wcd_mbhc_cal)->num_btn = WCD_MBHC_DEF_BUTTONS;
 	btn_cfg = WCD_MBHC_CAL_BTN_DET_PTR(wcd_mbhc_cal);
 	btn_high = ((void *)&btn_cfg->_v_btn_low) +
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
+#ifdef ZTE_MBHC_CAL
+	btn_high[0] = 100;
+	btn_high[1] = 200;
+	btn_high[2] = 400;
+	btn_high[3] = 500;
+	btn_high[4] = 500;
+	btn_high[5] = 500;
+	btn_high[6] = 500;
+	btn_high[7] = 500;
+#else
 	btn_high[0] = 75;
 	btn_high[1] = 150;
 	btn_high[2] = 237;
@@ -486,7 +533,7 @@ static void *def_wcd_mbhc_cal(void)
 	btn_high[5] = 500;
 	btn_high[6] = 500;
 	btn_high[7] = 500;
-
+#endif
 	return wcd_mbhc_cal;
 }
 
@@ -2089,7 +2136,13 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 			sizeof(struct msm_asoc_mach_data), GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
-
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+	pdata->zlog_snd_card_client = zlog_register_client(&zlog_snd_card_dev);
+	if(!pdata->zlog_snd_card_client){
+		dev_err(&pdev->dev,"%s:zlog register client zlog_snd_card_dev fail(%d)\n",__func__,ret);
+	}
+	pr_info("Regist zlog_client successfully!");
+#endif
 	of_property_read_u32(pdev->dev.of_node,
 						"qcom,wcd-disabled",
 						&pdata->wcd_disabled);
@@ -2152,10 +2205,20 @@ static int msm_asoc_machine_probe(struct platform_device *pdev)
 	if (ret == -EPROBE_DEFER) {
 		if (codec_reg_done)
 			ret = -EINVAL;
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+		zlog_client_record(pdata->zlog_snd_card_client,"klama_snd_card load error,ret=%d",ret);
+		zlog_client_notify(pdata->zlog_snd_card_client,ZLOG_SND_CARD_PROBE_ERROR_NO);
+		pr_info("zlog_client has recorded");
+#endif
 		goto err;
 	} else if (ret) {
 		dev_err(&pdev->dev, "%s: snd_soc_register_card failed (%d)\n",
 			__func__, ret);
+#ifdef CONFIG_VENDOR_ZTE_DEV_MONITOR_SYSTEM
+                zlog_client_record(pdata->zlog_snd_card_client,"kalama_snd_card probe error,ret=%d",ret);
+                zlog_client_notify(pdata->zlog_snd_card_client,ZLOG_SND_CARD_PROBE_ERROR_NO);
+		pr_info("client has recorded");
+#endif
 		goto err;
 	}
 	dev_info(&pdev->dev, "%s: Sound card %s registered\n",
